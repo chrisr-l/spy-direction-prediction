@@ -1,0 +1,3 @@
+model,target_horizon_days,val_accuracy,val_auc,predicted_up_fraction
+logreg_scaled,1,0.5,0.4929,0.9326
+random_forest,1,0.5164,0.4807,0.9391
