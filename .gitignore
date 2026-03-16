@@ -3,4 +3,9 @@ __pycache__/
 .ipynb_checkpoints/
 *.pyc
 .idea/
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.synctex.gz
 
