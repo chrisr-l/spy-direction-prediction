@@ -8,6 +8,7 @@
 \usepackage{hyperref}
 \usepackage{graphicx}
 \usepackage{float}
+\usepackage{lmodern}
 
 \title{Next-Day Direction Prediction for SPY Using OHLCV-Derived Features}
 \author{Christian Lauterbach}
@@ -19,51 +20,652 @@
 	\tableofcontents
 	\newpage
 	
+	\setlength{\parindent}{0pt}
+	\setlength{\parskip}{0.8em}
+	
 	\section{Introduction}
+
 	
-	Forecasting financial markets is a central problem in quantitative finance, yet short-horizon directional prediction remains particularly difficult. At the daily level, price movements are influenced by a large number of interacting factors, many of which are either unobserved or only partially reflected in historical price and volume data. As a result, any predictive structure available in simple past market data is expected to be weak relative to the noise inherent in next-day returns.
+	Predicting short-horizon asset price movements is a central but difficult problem in quantitative finance. In highly liquid markets such as the market for the SPDR S\&P 500 ETF Trust (SPY), any systematic next-day directional signal is expected to be weak, unstable, and difficult to extract from publicly observable price and volume data alone. This makes SPY a useful object for a baseline empirical study: if even simple one-day directional structure can be detected under a restricted feature set, then that would justify deeper modeling; if not, the negative result is itself informative.
 	
+	The present study considers the problem of predicting the sign of the next trading day's SPY close-to-close return using only daily OHLCV data, that is, open, high, low, close, and volume observations. The target is formulated as a binary classification problem in which the label indicates whether the next day's closing price exceeds the current day's closing price. Feature engineering is deliberately restricted to deterministic transformations of historical daily OHLCV observations, including returns, momentum measures, moving-average-relative quantities, volatility estimates, and range-based variables. No macroeconomic variables, options data, intraday order-flow information, or cross-asset features are used.
 	
-	This paper studies a deliberately restricted version of that problem: whether the next-day direction of the SPY exchange-traded fund can be predicted using only daily OHLCV data, that is, open, high, low, close, and volume observations. Rather than relying on alternative data, macroeconomic indicators, or complex deep learning architectures, the analysis is limited to a small class of engineered features derived directly from past market observations. This makes the setting transparent, reproducible, and mathematically easy to formalize.
+	Two standard baseline model classes are examined: logistic regression and random forest classification. The empirical design begins with a fixed chronological split into training, validation, and test segments, but particular emphasis is placed on expanding-window walk-forward evaluation, which more closely reflects the sequential nature of one-day-ahead forecasting. Model performance is assessed using accuracy, area under the receiver operating characteristic curve (AUC), confusion matrices, and comparison against a naive benchmark that always predicts an upward next-day move.
 	
-	The prediction target is defined as a binary variable indicating whether the next closing price exceeds the current closing price. On the basis of past OHLCV observations, several feature groups are constructed, including return-based, trend-relative, volatility-based, and volume-based variables. These features are then evaluated using baseline machine learning models, specifically logistic regression and random forest, under a chronological train-validation-test split designed to avoid look-ahead bias.
+	The empirical results provide no convincing evidence of a usable next-day predictive edge under the tested setup. Although the walk-forward logistic regression attains an accuracy slightly above \(0.54\), its AUC is approximately \(0.508\), and its predictions are overwhelmingly concentrated on the upward class. Moreover, its raw accuracy does not exceed that of the always-up baseline. Consequently, the observed performance is more plausibly explained by class imbalance in the evaluation period than by genuine predictive structure captured by the model.
 	
-	The empirical results do not provide evidence of meaningful next-day predictive power within this setup. Across the tested feature set and model classes, validation performance remained close to chance, and the associated area-under-the-curve (AUC) values did not indicate useful ranking ability. In particular, small differences in raw accuracy were shown to be misleading when examined alongside AUC, classification reports, and confusion matrices.
-	
-	The contribution of this paper is therefore not the discovery of a profitable forecasting rule, but a mathematically explicit baseline study. It shows that, under a simple and leakage-aware experimental design, next-day SPY direction does not appear to be credibly predictable from the tested OHLCV-derived features alone. This negative result is itself informative, since it helps clarify the limitations of naive feature-based approaches and motivates more careful choices of target horizon, feature space, and model structure in future work.
+	The contribution of this paper is therefore not a claim that SPY or financial markets are generally unpredictable. Rather, it is a mathematically explicit and empirically transparent baseline study showing that, for the particular one-day target, OHLCV-derived feature map, and baseline model classes considered here, no credible next-day directional forecasting advantage was demonstrated. This provides a useful reference point for future extensions involving richer information sets, alternative model classes, or different prediction horizons.
 	
 	\section{Problem Formulation}
 	
+	Let \(S_t\) denote the SPY closing price on trading day \(t\). The object of interest is the next-day close-to-close return
+	\[
+	r_{t+1} = \log\!\left(\frac{S_{t+1}}{S_t}\right),
+	\]
+	and the prediction task is formulated as a binary classification problem through the label
+	\[
+	Y_t = \mathbf{1}\{S_{t+1} > S_t\} = \mathbf{1}\{r_{t+1} > 0\}.
+	\]
+	Thus, \(Y_t = 1\) indicates the next trading day's closing price is greater than that of the previous day, while \(Y_t = 0\) indicates a non-positive or no move.
+	
+	The information available at time \(t\) is taken to be the daily OHLCV history up to and including day \(t\). Writing \(O_t, H_t, L_t, C_t,\) and \(V_t\) for the open, high, low, close, and volume on day \(t\), respectively, define the filtration
+	\[
+	\mathcal{F}_t = \sigma\!\big( (O_u, H_u, L_u, C_u, V_u)_{u \leq t} \big).
+	\]
+	All predictors used in this study are constructed as deterministic transformations of this information set. Accordingly, the feature vector at time \(t\) is written as
+	\[
+	X_t = \phi(\mathcal{F}_t),
+	\]
+	where \(\phi\) denotes the chosen feature map consisting of return-based, trend-relative, volatility, volume, and range-based transformations.
+	
+	The statistical learning problem is therefore to estimate the conditional probability
+	\[
+	\eta(x) = \mathbb{P}(Y_t = 1 \mid X_t = x),
+	\]
+	or, equivalently, to construct a classifier
+	\[
+	g(x) \in \{0,1\}
+	\]
+	that predicts the next-day direction from the observed feature vector. In empirical implementation, this is done using supervised learning methods trained on historical pairs \((X_t, Y_t)\).
+	
+	It is important to emphasize that the feature vector \(X_t\) is \(\mathcal{F}_t\)-measurable, whereas the label \(Y_t\) depends on the future price \(S_{t+1}\). Hence the task is genuinely predictive rather than contemporaneous. At each date \(t\), the model must infer whether the information encoded in the observed OHLCV history contains any usable signal about the sign of the next day's return.
+	
+	The purpose of the present paper is not to characterize the full data-generating process of SPY prices, nor to establish a universal impossibility result for short-horizon forecasting. Rather, the objective is narrower: to determine whether a restricted class of daily OHLCV-derived features, combined with standard baseline classifiers, yields a credible empirical edge for predicting the sign of the next trading day's close-to-close return.
+	
 	\section{Theoretical Motivation}
+	
 	\subsection{Market Randomness and Weak Predictability}
+	
+	A natural benchmark for short-horizon forecasting in liquid financial markets is the hypothesis that next-day directional movements are only weakly predictable from past daily price and volume information. In the present setting, this means that the conditional law of \(Y_t\) given the available filtration \(\mathcal{F}_t\) may be close to a constant. If, in the extreme case, there exists a constant \(p \in [0,1]\) such that
+	\[
+	\mathbb{P}(Y_t = 1 \mid \mathcal{F}_t) = p
+	\]
+	almost surely for all \(t\), then no \(\mathcal{F}_t\)-measurable predictor can extract systematic directional information beyond this constant success probability.
+	
+	Indeed, since \(X_t = \phi(\mathcal{F}_t)\) is itself \(\mathcal{F}_t\)-measurable, the tower property gives
+	\[
+	\mathbb{P}(Y_t = 1 \mid X_t)
+	= \mathbb{E}\!\left[\mathbb{P}(Y_t = 1 \mid \mathcal{F}_t)\mid X_t\right]
+	= \mathbb{E}[p \mid X_t]
+	= p.
+	\]
+	Thus, if the next-day direction is conditionally unpredictable from the full daily OHLCV filtration, then it is also unpredictable from any feature vector derived from that filtration. Under such a hypothesis, any apparent outperformance of a fitted classifier over a trivial benchmark must arise from finite-sample fluctuation rather than genuine predictive content.
+	
+	This argument does not prove that SPY is unpredictable. Rather, it clarifies the logical structure of the empirical exercise: a feature-based predictor can only succeed if the past OHLCV history contains nontrivial information about the sign of the next day's return.
+	
 	\subsection{Information Compression Through Feature Engineering}
+	
+	Even if \(\mathcal{F}_t\) contains weak directional information, the feature map
+	\[
+	\phi : \mathcal{F}_t \mapsto X_t
+	\]
+	need not preserve all of it. In practice, the raw information set is compressed into a finite-dimensional vector of engineered variables such as returns, moving-average-relative quantities, rolling volatilities, and range positions. This compression is necessary for tractable modeling, but it introduces an additional limitation: a poor feature map may discard whatever small predictive structure is present.
+	
+	Formally, because \(X_t\) is a measurable transformation of \(\mathcal{F}_t\), it cannot create information that is absent from \(\mathcal{F}_t\). At best, it preserves part of the predictive content already contained in the historical OHLCV sequence. Consequently, failure of prediction may arise for at least two distinct reasons: either the underlying filtration contains little usable next-day signal, or the chosen feature representation does not retain the relevant part of that signal.
+	
+	This consideration is especially important in a restricted baseline study such as the present one. The engineered variables are intentionally simple and interpretable. They are designed to summarize trend, momentum, volatility, and price location effects, but they do not attempt to encode richer market structure such as intraday dynamics, order flow, options-implied information, or macroeconomic state variables. The empirical conclusions must therefore be interpreted relative to this restricted information representation.
+	
 	\subsection{Model-Class Limitations}
 	
-	\section{Data}
+	A further source of limitation is the model class used to map \(X_t\) to a forecast. In this paper, two standard baseline classifiers are considered: logistic regression and random forest. Each imposes a specific inductive structure on the conditional relation between features and target.
 	
+	For logistic regression, the model assumption is
+	\[
+	\mathbb{P}(Y_t = 1 \mid X_t = x)
+	= \sigma(\beta_0 + \beta^\top x),
+	\]
+	where
+	\[
+	\sigma(z) = \frac{1}{1 + e^{-z}}
+	\]
+	is the logistic function. Equivalently, the log-odds are assumed to be affine in the feature vector:
+	\[
+	\log\!\left(\frac{\mathbb{P}(Y_t = 1 \mid X_t = x)}{1 - \mathbb{P}(Y_t = 1 \mid X_t = x)}\right)
+	= \beta_0 + \beta^\top x.
+	\]
+	This is a strong structural restriction. If the true predictive relation is nonlinear, nonmonotone, or interaction-dominated, logistic regression may fail even when some signal is present.
+	
+	Random forest relaxes linearity by averaging across many decision trees and can capture certain nonlinear and interaction effects. However, it remains limited by the finite feature representation, the sample size, and the weakness of the underlying signal. In particular, if the signal-to-noise ratio is extremely small, a more flexible model need not outperform a simpler one and may instead fit noise.
+	
+	Accordingly, a negative empirical result in this paper should not be interpreted as a universal impossibility theorem. The correct interpretation is narrower: within the chosen feature space and within the tested baseline model classes, no reliable next-day directional forecasting advantage was demonstrated.
+	
+	\section{Data Description}
+	
+	The empirical analysis is based on daily observations of the SPDR S\&P 500 ETF Trust (SPY). For each trading day \(t\), the raw dataset contains the standard OHLCV variables: open \(O_t\), high \(H_t\), low \(L_t\), close \(C_t\), and traded volume \(V_t\). The data was downloaded using the \texttt{yfinance} Python package and stored locally for reproducible preprocessing and modeling.
+	
+	After loading the raw file, the date index was converted into an explicit \texttt{Date} column and ordered chronologically. Letting the trading dates be indexed by \(t=1,\dots,n\), the dataset was sorted so that lower indices correspond to earlier observations. This chronological ordering is essential because the forecasting task is sequential: features at time \(t\) may depend only on information available up to day \(t\), whereas the target depends on day \(t+1\).
+	
+	The prediction target is the binary next-day direction label
+	\[
+	Y_t = \mathbf{1}\{C_{t+1} > C_t\},
+	\]
+	equivalently,
+	\[
+	Y_t = \mathbf{1}\left\{\log\!\left(\frac{C_{t+1}}{C_t}\right) > 0\right\}.
+	\]
+	Thus, each usable observation consists of a pair \((X_t,Y_t)\), where \(X_t\) is constructed from OHLCV information up to day \(t\), and \(Y_t\) records whether the next closing price is higher than the current one.
+	
+	Because rolling statistics and lagged transformations are used in feature construction, the first part of the sample cannot be used immediately: some engineered variables are undefined until a sufficient lookback window is available. Similarly, the final raw observation cannot be assigned a next-day label in the absence of \(C_{t+1}\). After applying feature construction and removing rows with missing values induced by rolling windows and target alignment, the resulting engineered dataset forms the basis for all subsequent modeling experiments.
+	
+	The dataset is intentionally narrow in scope. Only daily SPY OHLCV information is used. No dividends, macroeconomic releases, firm-level fundamentals, options-implied quantities, alternative data, intraday observations, or cross-sectional predictors are included. This restriction is deliberate: the aim is to evaluate whether a simple and fully public daily information set contains a detectable next-day directional signal under a transparent baseline framework.
+	
+	```latex
 	\section{Feature Engineering}
-	\subsection{Return and Momentum Features}
+	
+	The feature set is constructed entirely from daily OHLCV observations and consists of deterministic transformations of information available at time \(t\). Each engineered variable is therefore \(\mathcal{F}_t\)-measurable. The guiding principle is to represent several standard types of market information within a simple and interpretable feature map: recent returns, trend-relative position, realized volatility, volume changes, and the location of the current price within recent trading ranges.
+	
+	\subsection{Return Features}
+	
+	The first group of variables summarizes recent price movement over multiple horizons. Let \(C_t\) denote the SPY closing price on day \(t\). For \(k \in \{1,2,5,10,20\}\), define the \(k\)-day simple return feature by
+	\[
+	\text{return\_}k\text{d}_t = \frac{C_t}{C_{t-k}} - 1.
+	\]
+	Explicitly, the feature set includes
+	\[
+	\text{return\_1d}_t = \frac{C_t}{C_{t-1}} - 1,\qquad
+	\text{return\_2d}_t = \frac{C_t}{C_{t-2}} - 1,\qquad
+	\text{return\_5d}_t = \frac{C_t}{C_{t-5}} - 1,
+	\]
+	and
+	\[
+	\text{return\_10d}_t = \frac{C_t}{C_{t-10}} - 1,\qquad
+	\text{return\_20d}_t = \frac{C_t}{C_{t-20}} - 1.
+	\]
+	
+	These variables encode whether the asset has recently appreciated or depreciated over several lookback windows. If short-horizon continuation or reversal effects exist in daily SPY data, such multi-scale return features provide a simple way for the model to access them.
+	
 	\subsection{Trend-Relative Features}
+	
+	Simple moving averages are often used to summarize local trend. However, raw moving averages remain strongly tied to the price level itself and therefore mix level information with relative position information. For this reason, the final specification uses normalized moving-average-relative features rather than the raw moving averages alone.
+	
+	Let
+	\[
+	\text{MA}_{k,t} = \frac{1}{k}\sum_{j=0}^{k-1} C_{t-j}
+	\]
+	denote the \(k\)-day simple moving average of the closing price. The trend-relative features are then defined as
+	\[
+	\text{ma\_5\_rel}_t = \frac{C_t}{\text{MA}_{5,t}} - 1,
+	\qquad
+	\text{ma\_10\_rel}_t = \frac{C_t}{\text{MA}_{10,t}} - 1,
+	\qquad
+	\text{ma\_20\_rel}_t = \frac{C_t}{\text{MA}_{20,t}} - 1.
+	\]
+	These variables measure whether the current close lies above or below its recent average level.
+	
+	In addition, two moving-average spread variables are included:
+	\[
+	\text{ma\_spread\_5\_20}_t = \frac{\text{MA}_{5,t}}{\text{MA}_{20,t}} - 1,
+	\qquad
+	\text{ma\_spread\_10\_20}_t = \frac{\text{MA}_{10,t}}{\text{MA}_{20,t}} - 1.
+	\]
+	These aim to capture local trend slope by comparing shorter and longer moving-average horizons.
+	
 	\subsection{Volatility Features}
+	
+	To represent recent realized variability, rolling standard deviations of one-day returns are used. Writing \(\text{return\_1d}_t\) for the one-day simple return, define
+	\[
+	\text{vol\_5}_t = \operatorname{sd}\!\big(\text{return\_1d}_{t-4},\dots,\text{return\_1d}_{t}\big),
+	\qquad
+	\text{vol\_20}_t = \operatorname{sd}\!\big(\text{return\_1d}_{t-19},\dots,\text{return\_1d}_{t}\big),
+	\]
+	where \(\operatorname{sd}\) denotes the sample standard deviation over the stated rolling window.
+	
+	A further feature compares short-horizon and medium-horizon realized volatility:
+	\[
+	\text{vol\_ratio}_t = \frac{\text{vol\_5}_t}{\text{vol\_20}_t}.
+	\]
+	This ratio is intended to detect local volatility expansion or contraction. A value above one indicates that recent short-window variability exceeds the broader 20-day realized volatility level.
+	
 	\subsection{Volume and Range-Based Features}
 	
+	Trading volume is represented through the one-day percentage change
+	\[
+	\text{volume\_change\_1d}_t = \frac{V_t}{V_{t-1}} - 1.
+	\]
+	This feature is included as a simple proxy for unusually high or low trading activity relative to the previous session.
+	
+	Several variables are also constructed from daily price ranges. First, the intraday return and intraday range quantities are defined by
+	\[
+	\text{intraday\_return}_t = \frac{C_t}{O_t} - 1,
+	\qquad
+	\text{high\_low\_range}_t = \frac{H_t}{L_t} - 1,
+	\qquad
+	\text{close\_to\_high}_t = \frac{C_t}{H_t} - 1,
+	\qquad
+	\text{close\_to\_low}_t = \frac{C_t}{L_t} - 1.
+	\]
+	These variables summarize how the trading day evolved internally and where the close occurred relative to the day's extremes.
+	
+	To encode the position of the current close within recent rolling price ranges, define
+	\[
+	H^{(10)}_t = \max\{H_{t-9},\dots,H_t\},
+	\qquad
+	L^{(10)}_t = \min\{L_{t-9},\dots,L_t\},
+	\]
+	and similarly
+	\[
+	H^{(20)}_t = \max\{H_{t-19},\dots,H_t\},
+	\qquad
+	L^{(20)}_t = \min\{L_{t-19},\dots,L_t\}.
+	\]
+	The associated range-position features are then
+	\[
+	\text{range\_pos\_10}_t = \frac{C_t - L^{(10)}_t}{H^{(10)}_t - L^{(10)}_t},
+	\qquad
+	\text{range\_pos\_20}_t = \frac{C_t - L^{(20)}_t}{H^{(20)}_t - L^{(20)}_t}.
+	\]
+	These variables lie near \(1\) when the close is near the upper end of the recent range and near \(0\) when it is close to the lower end.
+	
+	Taken together, the final feature map is intended to provide a compact but diversified representation of recent daily market behavior. At the same time, it remains deliberately limited to simple OHLCV-derived transformations, consistent with the baseline nature of the study.
+	
 	\section{Models}
+	
+	Let \(X_t \in \mathbb{R}^d\) denote the feature vector constructed from daily OHLCV information up to time \(t\), and let
+	\[
+	Y_t = \mathbf{1}\{C_{t+1} > C_t\} \in \{0,1\}
+	\]
+	be the next-day direction label. The objective of each model is to estimate the conditional probability
+	\[
+	\eta(x) = \mathbb{P}(Y_t = 1 \mid X_t = x),
+	\]
+	or equivalently to construct a classifier
+	\[
+	g(x) \in \{0,1\}
+	\]
+	for predicting the sign of the next day's close-to-close move.
+	
+	Two baseline model classes are considered. Logistic regression provides a simple parametric benchmark with linear log-odds, while random forest provides a nonlinear tree-based benchmark capable of representing threshold effects and feature interactions. The pair is therefore useful for distinguishing between failure due to weak signal itself and failure due merely to linear model misspecification.
+	
 	\subsection{Logistic Regression}
+	
+	Logistic regression assumes that the conditional probability of an upward move takes the form
+	\[
+	\mathbb{P}(Y_t = 1 \mid X_t = x)
+	=
+	\sigma(\beta_0 + \beta^\top x),
+	\]
+	where
+	\[
+	\sigma(z) = \frac{1}{1+e^{-z}}
+	\]
+	is the logistic function, \(\beta_0 \in \mathbb{R}\) is an intercept, and \(\beta \in \mathbb{R}^d\) is a coefficient vector.
+	
+	Equivalently, the model assumes linear log-odds:
+	\[
+	\log \left(
+	\frac{\mathbb{P}(Y_t = 1 \mid X_t = x)}
+	{1-\mathbb{P}(Y_t = 1 \mid X_t = x)}
+	\right)
+	=
+	\beta_0 + \beta^\top x.
+	\]
+	Thus the decision boundary at threshold \(1/2\) is the hyperplane
+	\[
+	\beta_0 + \beta^\top x = 0.
+	\]
+	
+	Given training observations \((X_i,Y_i)_{i=1}^n\), the parameters are estimated by maximizing the Bernoulli log-likelihood
+	\[
+	\ell(\beta_0,\beta)
+	=
+	\sum_{i=1}^n
+	\left[
+	Y_i \log p_i + (1-Y_i)\log(1-p_i)
+	\right],
+	\qquad
+	p_i = \sigma(\beta_0 + \beta^\top X_i).
+	\]
+	This is equivalent to minimizing logistic loss.
+	
+	The main appeal of logistic regression in the present setting is that it directly estimates a conditional probability and imposes a very transparent structure on the forecasting problem. If even this simple specification cannot produce meaningful ranking or classification performance, then any usable signal in the chosen feature space is unlikely to be strong and linearly accessible.
+	
+	Because the engineered features have different numerical scales, logistic regression is fitted after standardization. For feature \(j\),
+	\[
+	\widetilde{X}_{ij} = \frac{X_{ij} - \mu_j}{s_j},
+	\]
+	where \(\mu_j\) and \(s_j\) are the sample mean and sample standard deviation computed on the training set only. This prevents the numerical optimization from being distorted by scale differences across coordinates.
+	
 	\subsection{Random Forest}
 	
+	A decision tree is a function
+	\[
+	T : \mathbb{R}^d \to \{0,1\}
+	\]
+	constructed by recursively partitioning the feature space into regions
+	\[
+	R_1,\dots,R_M
+	\]
+	through axis-aligned threshold splits of the form
+	\[
+	x_j \leq c
+	\qquad \text{or} \qquad
+	x_j > c.
+	\]
+	On each terminal region \(R_m\), the tree predicts a constant class probability
+	\[
+	\widehat{p}_m
+	=
+	\frac{1}{|I_m|}\sum_{i \in I_m} Y_i,
+	\qquad
+	I_m = \{i : X_i \in R_m\},
+	\]
+	and hence defines the piecewise-constant estimator
+	\[
+	\widehat{\eta}_T(x) = \sum_{m=1}^M \widehat{p}_m \mathbf{1}\{x \in R_m\}.
+	\]
+	
+	A random forest averages many such trees. If \(T_1,\dots,T_B\) are trees grown on bootstrap samples with random feature subsampling at each split, then the forest probability estimator is
+	\[
+	\widehat{\eta}_{\mathrm{RF}}(x)
+	=
+	\frac{1}{B}\sum_{b=1}^B \widehat{\eta}_{T_b}(x),
+	\]
+	and the induced classifier is
+	\[
+	g_{\mathrm{RF}}(x)
+	=
+	\mathbf{1}\{\widehat{\eta}_{\mathrm{RF}}(x) > 1/2\}.
+	\]
+	
+	The mathematical justification for using random forest here is that it relaxes the linearity restriction of logistic regression. Since each tree partitions \(\mathbb{R}^d\) into rectangular regions, the ensemble can approximate nonlinear conditional probability surfaces and interaction effects of the form
+	\[
+	\eta(x) \neq \sigma(\beta_0 + \beta^\top x).
+	\]
+	In particular, it can represent situations in which predictive structure appears only after thresholding one variable and conditioning on another.
+	
+	At the same time, random forest remains a baseline model rather than a fully unrestricted estimator. Its fitted probabilities are still determined entirely by the chosen feature vector \(X_t\), so it cannot recover predictive information absent from the engineered OHLCV-derived representation. Thus, if both logistic regression and random forest fail, the natural interpretation is not that prediction is impossible in general, but that within the tested feature space no credible next-day signal was made empirically visible.
+	
 	\section{Experimental Design}
-	\subsection{Chronological Train-Validation-Test Split}
+	
+	The empirical analysis is organized around two evaluation schemes: a fixed chronological split and an expanding-window walk-forward procedure. In both cases, the ordering of observations is preserved. At no point are the data randomly shuffled, since such shuffling would destroy the temporal structure of the forecasting problem and would introduce look-ahead contamination.
+	
+	Let the engineered dataset consist of ordered observations
+	\[
+	(X_1,Y_1),\dots,(X_n,Y_n),
+	\]
+	where \(X_t\) is constructed from information available up to trading day \(t\), and
+	\[
+	Y_t = \mathbf{1}\{C_{t+1} > C_t\}.
+	\]
+	The forecasting task is therefore sequential: at each time \(t\), prediction must be based only on past and current information, never on future observations.
+	
+	\subsection{Fixed Chronological Split Benchmark}
+	
+	As an initial benchmark, the sample is partitioned chronologically into three contiguous blocks:
+	\[
+	\text{training set} = \{1,\dots,\lfloor 0.7n \rfloor\},
+	\]
+	\[
+	\text{validation set} = \{\lfloor 0.7n \rfloor + 1,\dots,\lfloor 0.85n \rfloor\},
+	\]
+	\[
+	\text{test set} = \{\lfloor 0.85n \rfloor + 1,\dots,n\}.
+	\]
+	The model is fitted once on the training block and then evaluated on the subsequent validation block. In this design the fitted parameters remain fixed throughout the validation period.
+	
+	Formally, if \(\widehat{g}_{\mathrm{train}}\) denotes the classifier estimated on the training block, then for every validation index \(t\),
+	\[
+	\widehat{Y}_t = \widehat{g}_{\mathrm{train}}(X_t).
+	\]
+	Thus the same fitted model is used for all validation observations.
+	
+	This benchmark is useful as a first diagnostic, but it is not the most realistic design for a one-day-ahead forecasting problem. In practice, once a day has passed, its realized observation becomes part of the historical sample and can be used for the next prediction. For this reason, the main emphasis of the paper is placed on walk-forward evaluation.
+	
+	\subsection{Expanding-Window Walk-Forward Evaluation}
+	
+	The central evaluation scheme is expanding-window walk-forward forecasting. Let
+	\[
+	t_0 = \lfloor 0.7n \rfloor
+	\]
+	denote the end of the initial training window. For each
+	\[
+	t = t_0, t_0+1, \dots, n,
+	\]
+	the model is re-estimated using all observations up to time \(t-1\), and then used to predict the next unseen observation at time \(t\).
+	
+	More precisely, at step \(t\), the training sample is
+	\[
+	\{(X_1,Y_1),\dots,(X_{t-1},Y_{t-1})\},
+	\]
+	and the one-step-ahead prediction is
+	\[
+	\widehat{Y}_t = \widehat{g}_{t-1}(X_t),
+	\]
+	where \(\widehat{g}_{t-1}\) denotes the classifier fitted on the expanding sample up to \(t-1\). The associated estimated class probability is
+	\[
+	\widehat{p}_t = \widehat{\eta}_{t-1}(X_t).
+	\]
+	
+	This procedure better matches the operational logic of short-horizon forecasting. After predicting day \(t\), the realized pair \((X_t,Y_t)\) is treated as newly available information and is incorporated into the training sample for the next iteration. Hence the training window expands over time, while the prediction horizon remains fixed at one trading day.
+	
 	\subsection{Evaluation Metrics}
 	
+	Model performance is evaluated using accuracy, area under the receiver operating characteristic curve (AUC), and the confusion matrix.
+	
+	For predicted labels \(\widehat{Y}_t \in \{0,1\}\), accuracy is defined as
+	\[
+	\mathrm{Acc}
+	=
+	\frac{1}{N}\sum_{t=1}^{N} \mathbf{1}\{\widehat{Y}_t = Y_t\},
+	\]
+	where \(N\) is the number of evaluated observations. Accuracy measures the proportion of correctly classified days, but it can be misleading when one class is predicted almost all the time.
+	
+	To assess ranking quality independently of a fixed classification threshold, the AUC is also reported. If \(\widehat{p}_t\) denotes the predicted probability of class \(1\), then AUC measures the extent to which positive observations tend to receive higher scores than negative ones. An AUC of
+	\[
+	0.5
+	\]
+	corresponds to random ranking, while values materially above \(0.5\) indicate discriminative ability. In the present setting, AUC is more informative than raw accuracy when a classifier is heavily biased toward the majority class.
+	
+	The confusion matrix is reported in the form
+	\[
+	\begin{bmatrix}
+		TN & FP \\
+		FN & TP
+	\end{bmatrix},
+	\]
+	where \(TN\), \(FP\), \(FN\), and \(TP\) denote true negatives, false positives, false negatives, and true positives, respectively. This matrix makes explicit whether apparent performance is driven by balanced discrimination or by one-sided class prediction.
+	
+	\subsection{Naive Baselines}
+	
+	A meaningful empirical evaluation requires comparison with trivial prediction rules. The most important naive baseline in this study is the always-up classifier
+	\[
+	\widehat{Y}_t^{\mathrm{up}} \equiv 1.
+	\]
+	Its accuracy is
+	\[
+	\mathrm{Acc}_{\mathrm{up}}
+	=
+	\frac{1}{N}\sum_{t=1}^{N} \mathbf{1}\{Y_t = 1\},
+	\]
+	which is simply the empirical fraction of up days in the evaluation period.
+	
+	This baseline is especially relevant because SPY, over many periods, exhibits a slight upward tendency. As a consequence, a classifier that predicts class \(1\) almost everywhere may achieve an accuracy above \(0.5\) without possessing meaningful forecasting power. Any reported model performance must therefore be interpreted relative to this benchmark.
+	
+	Accordingly, the central empirical question is not whether a fitted model attains an accuracy slightly above chance in isolation, but whether it improves meaningfully upon trivial directional rules while also exhibiting nontrivial AUC and less degenerate class behavior.
+	
+	```latex
 	\section{Results}
 	
+	\subsection{Fixed-Split Results}
+	
+	The fixed chronological split serves as a preliminary benchmark rather than the main empirical evaluation. Under this design, each model is fitted once on the initial training block and then applied with frozen parameters to the validation block.
+	
+	For scaled logistic regression, the validation accuracy was
+	\[
+	0.5000,
+	\]
+	with validation AUC
+	\[
+	0.4929.
+	\]
+	The fraction of validation observations predicted as class \(1\) was
+	\[
+	0.9326.
+	\]
+	Thus the classifier predicted an upward move on more than \(93\%\) of validation days, yet achieved neither meaningful classification accuracy nor useful ranking quality. Since the AUC lies slightly below \(0.5\), the model did not exhibit credible discriminative ability on the validation segment.
+	
+	For random forest, the validation accuracy was
+	\[
+	0.5164,
+	\]
+	with validation AUC
+	\[
+	0.4807.
+	\]
+	The predicted-up fraction was
+	\[
+	0.9391.
+	\]
+	Although the raw accuracy is slightly above \(0.5\), the AUC is again below \(0.5\), and the classifier is similarly concentrated on the upward class. Hence this result also fails to provide evidence of meaningful predictive structure.
+	
+	Taken together, the fixed-split benchmark suggests that, under a frozen one-time fit, neither baseline model extracted a useful directional signal from the engineered OHLCV-derived feature set over the horizon of the validation split. Because these results were already weak at the validation stage, no final test-set evaluation was treated as substantively informative.
+	
+	\subsection{Walk-Forward Results}
+	
+	The main empirical evaluation is the expanding-window walk-forward procedure, which more closely reflects sequential one-day-ahead forecasting. At each step, the model is re-estimated on all observations available up to that date and then used to predict the next unseen day.
+	
+	Under this design, the scaled logistic regression achieved walk-forward accuracy
+	\[
+	0.540296052631579,
+	\]
+	and walk-forward AUC
+	\[
+	0.5084213049209618.
+	\]
+	The fraction of walk-forward predictions assigned to class \(1\) was
+	\[
+	0.9547697368421053.
+	\]
+	Hence the model predicted an upward move on approximately \(95.5\%\) of evaluated days.
+	
+	The corresponding confusion matrix was
+	\[
+	\begin{bmatrix}
+		27 & 531 \\
+		28 & 630
+	\end{bmatrix}.
+	\]
+	Thus, among the \(558\) realized class-\(0\) observations, only \(27\) were correctly classified, while \(531\) were incorrectly labeled as upward moves. Among the \(658\) realized class-\(1\) observations, \(630\) were correctly classified and \(28\) were missed. This confirms that the model's behavior was dominated by near-constant prediction of the upward class.
+	
+	At first sight, an accuracy of approximately \(0.54\) may appear modestly positive. However, the AUC remains only marginally above random ranking:
+	\[
+	0.5084 \approx 0.5.
+	\]
+	Therefore the estimated probabilities contain almost no useful discrimination between up and non-up days. The increase in raw accuracy is not sufficient, by itself, to justify a claim of predictive edge.
+	
+	\subsection{Comparison with the Always-Up Baseline}
+	
+	To interpret the walk-forward accuracy correctly, it must be compared with the naive always-up rule
+	\[
+	\widehat{Y}_t^{\mathrm{up}} \equiv 1.
+	\]
+	Its walk-forward accuracy was
+	\[
+	0.5411184210526315,
+	\]
+	with predicted-up fraction
+	\[
+	1.0.
+	\]
+	Since this baseline predicts class \(1\) on every day, its accuracy is exactly the empirical fraction of up days in the walk-forward evaluation period.
+	
+	This comparison is decisive. The walk-forward logistic regression attained accuracy
+	\[
+	0.540296052631579,
+	\]
+	whereas the always-up baseline attained
+	\[
+	0.5411184210526315.
+	\]
+	Hence even in terms of raw accuracy alone, the fitted model did not outperform a trivial directional rule. Moreover, because the model's AUC was only approximately \(0.5084\), there is no compensating evidence that it possessed meaningful ranking skill despite similar thresholded accuracy.
+	
+	Accordingly, the most coherent interpretation of the walk-forward result is not that the model discovered a genuine next-day signal, but rather that it largely tracked the unconditional upward tendency of the evaluation window. The empirical evidence therefore supports the conclusion that, for the tested feature map and baseline models, no credible next-day directional forecasting advantage was demonstrated.
+	
 	\section{Discussion}
-	\subsection{Interpretation of the Validation Results}
+	
+	\subsection{Interpretation of the Empirical Results}
+	
+	The empirical results are consistently weak across both evaluation designs. In the fixed-split benchmark, neither logistic regression nor random forest achieved meaningful AUC, and both models predicted the upward class with very high frequency. In the walk-forward experiment, scaled logistic regression produced an accuracy slightly above \(0.54\), but its AUC remained essentially at chance level and its predicted-up fraction remained close to \(1\). The confusion matrix likewise showed that the model almost never identified non-up days correctly.
+	
+	Taken together, these findings do not support the existence of a usable next-day directional signal within the tested OHLCV-derived feature space. The most favorable numerical result, namely the walk-forward accuracy of approximately \(0.5403\), is not compelling once considered jointly with the model's near-degenerate classification behavior and near-random ranking ability. In particular, a model that predicts upward movement on almost every day is not providing a substantively informative forecast, even if the resulting accuracy is modestly above \(0.5\).
+	
+	The comparison with the always-up baseline makes this point especially clear. Since the naive rule slightly outperformed the fitted walk-forward logistic model in raw accuracy, the observed performance cannot reasonably be interpreted as empirical evidence of a learned forecasting edge. Rather, the results are more consistent with a setting in which the evaluation period simply contained slightly more up days than down days.
+	
 	\subsection{Why Accuracy Alone Was Misleading}
+	
+	The central metric lesson of this study is that raw classification accuracy can be misleading in an imbalanced or near-imbalanced directional prediction problem. If the empirical proportion of up days in a sample is greater than \(0.5\), then a classifier that predicts class \(1\) almost everywhere may achieve an accuracy above \(0.5\) without distinguishing meaningfully between upward and non-upward observations.
+	
+	Formally, for the always-up classifier
+	\[
+	\widehat{Y}_t^{\mathrm{up}} \equiv 1,
+	\]
+	the accuracy is
+	\[
+	\mathrm{Acc}_{\mathrm{up}}
+	=
+	\frac{1}{N}\sum_{t=1}^N \mathbf{1}\{Y_t = 1\},
+	\]
+	which is simply the realized proportion of upward days in the evaluation window. Thus any fitted classifier whose predictions are concentrated overwhelmingly on class \(1\) must be judged relative to this benchmark rather than relative to \(0.5\) alone.
+	
+	This is precisely why AUC is important in the present context. Whereas accuracy evaluates thresholded class labels, AUC evaluates the ranking behavior of predicted probabilities. A classifier with genuine predictive content should tend to assign higher scores to realized up days than to realized non-up days, yielding
+	\[
+	\mathrm{AUC} > 0.5
+	\]
+	by a nontrivial margin. In the present experiments, however, the reported AUC values were approximately \(0.49\), \(0.48\), and \(0.51\), all of which are consistent with essentially random ranking. The combination of near-random AUC and near-constant upward classification therefore indicates that the modest accuracy levels do not reflect meaningful forecast quality.
+	
 	\subsection{Limits of the Conclusion}
+	
+	The negative empirical findings of this paper should be interpreted carefully. They do not establish that SPY is unpredictable in general, nor do they prove that all short-horizon directional forecasting attempts based on public information must fail. The present study considers only a restricted feature space derived from daily OHLCV data and only two baseline model classes. A different information set, a different horizon, or a different model class could in principle yield different results.
+	
+	In particular, the filtration used here is narrow relative to what may be relevant in practice. Daily OHLCV variables omit intraday information, cross-asset dependence, options-implied signals, macroeconomic announcements, and order-flow structure. Likewise, the models considered here are intentionally baseline methods rather than highly specialized forecasting architectures. Even within the same daily-data setting, alternative target definitions, probability calibration methods, or regularization choices could alter the empirical outcome.
+	
+	Accordingly, the correct conclusion is conditional and local to the present design:
+	\[
+	\text{within the tested OHLCV-derived feature space and baseline model classes,}
+	\]
+	\[
+	\text{no credible next-day predictive edge was demonstrated.}
+	\]
+	That conclusion is mathematically modest but empirically meaningful. It identifies a transparent baseline under which the evidence for next-day directional predictability was not persuasive, and thereby helps delimit what stronger future approaches would need to improve upon.
 	
 	\section{Conclusion}
 	
+	This paper studied the problem of predicting the sign of the next trading day's SPY close-to-close return using only daily OHLCV-derived features. The target was formulated as the binary variable
+	\[
+	Y_t = \mathbf{1}\{C_{t+1} > C_t\},
+	\]
+	and the feature vector \(X_t\) was restricted to deterministic transformations of the historical daily OHLCV information available up to time \(t\). Logistic regression and random forest were then evaluated as baseline classifiers under both a fixed chronological split and an expanding-window walk-forward design.
+	
+	Across both evaluation schemes, the empirical results did not provide convincing evidence of a usable next-day directional signal. In the fixed-split benchmark, both baseline models produced AUC values below \(0.5\) and predicted the upward class with very high frequency. In the walk-forward experiment, scaled logistic regression achieved an accuracy of approximately \(0.5403\), but its AUC was only approximately \(0.5084\), and its predictions remained overwhelmingly concentrated on class \(1\). Moreover, its raw accuracy did not exceed that of the naive always-up baseline.
+	
+	The central conclusion is therefore narrow and conditional rather than universal. The results do not imply that SPY or financial markets are unpredictable in general. Rather, they show that within the particular one-day forecasting setup studied here, using the tested OHLCV-derived feature map and baseline model classes, no credible next-day directional forecasting advantage was demonstrated.
+	
+	From a methodological perspective, the study also illustrates the importance of evaluation design and metric choice in financial classification problems. A modest accuracy above \(0.5\) can be misleading when a classifier largely reproduces the majority class, whereas AUC and explicit comparison with trivial baselines provide a more reliable interpretation. In that sense, the paper contributes not only a negative empirical finding, but also a mathematically transparent benchmark against which richer future forecasting approaches may be judged.
+	
 	\section{Future Work}
+	
+	Several natural extensions of the present study remain open. First, the information set could be enlarged beyond daily OHLCV variables. In the notation of the paper, this means replacing the restricted filtration
+	\[
+	\mathcal{F}_t = \sigma\!\big((O_u,H_u,L_u,C_u,V_u)_{u\le t}\big)
+	\]
+	with a richer information structure incorporating, for example, intraday data, cross-asset variables, macroeconomic releases, volatility indices, or options-implied quantities. If usable short-horizon predictive structure exists, it may be more visible in such expanded filtrations than in daily OHLCV data alone.
+	
+	Second, the feature map
+	\[
+	X_t = \phi(\mathcal{F}_t)
+	\]
+	could be refined. The present paper used only a deliberately simple and interpretable set of engineered variables. Future work could consider alternative transformations, lag structures, nonlinear interaction features, or more systematic feature selection procedures. This would help distinguish between a genuinely weak signal and a signal that is merely poorly represented by the current feature map.
+	
+	Third, the model class could be broadened beyond logistic regression and random forest. Since the conditional probability function
+	\[
+	\eta(x) = \mathbb{P}(Y_t = 1 \mid X_t = x)
+	\]
+	need not have linear or tree-ensemble structure, future work could examine other nonlinear estimators, regularized methods, boosting-based classifiers, or sequence models designed for time-dependent data. Any such extension should still be evaluated under a strictly chronological forecasting design.
+	
+	Fourth, alternative target definitions may be worth considering. The present paper studied only the sign of the next day's close-to-close return. Other horizons, such as multi-day direction, or alternative targets such as threshold exceedance events, volatility states, or risk-adjusted trading rules, may yield more informative empirical problems.
+	
+	Finally, future work should continue to emphasize rigorous benchmark comparison. In weak-signal financial prediction tasks, apparent performance can easily be driven by class imbalance or period-specific drift. For that reason, any stronger model should be judged not only by raw accuracy, but also by probability ranking quality, calibration, baseline comparison, and economic relevance after accounting for implementation frictions.
+	
+	In summary, the natural continuation of this project is not simply to fit more complex models, but to enlarge the information set, improve the feature representation, and test whether any resulting gains survive under realistic sequential evaluation and careful baseline comparison.
 	
 \end{document}
