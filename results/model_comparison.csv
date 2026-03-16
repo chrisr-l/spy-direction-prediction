@@ -1,3 +1,5 @@
-model,target_horizon_days,val_accuracy,val_auc,predicted_up_fraction
-logreg_scaled,1,0.5,0.4929,0.9326
-random_forest,1,0.5164,0.4807,0.9391
+model;target_horizon_days;evaluation;accuracy;auc;predicted_up_fraction
+logreg_scaled_fixed_split;1;validation;0.5;0.4929;0.9326
+random_forest_fixed_split;1;validation;0.5164;0.4807;0.9391
+logreg_scaled_walk_forward;1;walk_forward;0.540296052631579;0.5084213049209618;0.9547697368421053
+always_up_walk_forward;1;walk_forward;0.5411184210526315;;1.0

@@ -1,0 +1,69 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{float}
+
+\title{Next-Day Direction Prediction for SPY Using OHLCV-Derived Features}
+\author{Christian Lauterbach}
+\date{\today}
+
+\begin{document}
+	
+	\maketitle
+	\tableofcontents
+	\newpage
+	
+	\section{Introduction}
+	
+	Forecasting financial markets is a central problem in quantitative finance, yet short-horizon directional prediction remains particularly difficult. At the daily level, price movements are influenced by a large number of interacting factors, many of which are either unobserved or only partially reflected in historical price and volume data. As a result, any predictive structure available in simple past market data is expected to be weak relative to the noise inherent in next-day returns.
+	
+	
+	This paper studies a deliberately restricted version of that problem: whether the next-day direction of the SPY exchange-traded fund can be predicted using only daily OHLCV data, that is, open, high, low, close, and volume observations. Rather than relying on alternative data, macroeconomic indicators, or complex deep learning architectures, the analysis is limited to a small class of engineered features derived directly from past market observations. This makes the setting transparent, reproducible, and mathematically easy to formalize.
+	
+	The prediction target is defined as a binary variable indicating whether the next closing price exceeds the current closing price. On the basis of past OHLCV observations, several feature groups are constructed, including return-based, trend-relative, volatility-based, and volume-based variables. These features are then evaluated using baseline machine learning models, specifically logistic regression and random forest, under a chronological train-validation-test split designed to avoid look-ahead bias.
+	
+	The empirical results do not provide evidence of meaningful next-day predictive power within this setup. Across the tested feature set and model classes, validation performance remained close to chance, and the associated area-under-the-curve (AUC) values did not indicate useful ranking ability. In particular, small differences in raw accuracy were shown to be misleading when examined alongside AUC, classification reports, and confusion matrices.
+	
+	The contribution of this paper is therefore not the discovery of a profitable forecasting rule, but a mathematically explicit baseline study. It shows that, under a simple and leakage-aware experimental design, next-day SPY direction does not appear to be credibly predictable from the tested OHLCV-derived features alone. This negative result is itself informative, since it helps clarify the limitations of naive feature-based approaches and motivates more careful choices of target horizon, feature space, and model structure in future work.
+	
+	\section{Problem Formulation}
+	
+	\section{Theoretical Motivation}
+	\subsection{Market Randomness and Weak Predictability}
+	\subsection{Information Compression Through Feature Engineering}
+	\subsection{Model-Class Limitations}
+	
+	\section{Data}
+	
+	\section{Feature Engineering}
+	\subsection{Return and Momentum Features}
+	\subsection{Trend-Relative Features}
+	\subsection{Volatility Features}
+	\subsection{Volume and Range-Based Features}
+	
+	\section{Models}
+	\subsection{Logistic Regression}
+	\subsection{Random Forest}
+	
+	\section{Experimental Design}
+	\subsection{Chronological Train-Validation-Test Split}
+	\subsection{Evaluation Metrics}
+	
+	\section{Results}
+	
+	\section{Discussion}
+	\subsection{Interpretation of the Validation Results}
+	\subsection{Why Accuracy Alone Was Misleading}
+	\subsection{Limits of the Conclusion}
+	
+	\section{Conclusion}
+	
+	\section{Future Work}
+	
+\end{document}
